@@ -20,7 +20,6 @@ TABS.adjustments.initialize = function (callback) {
     }
 
     function load_html() {
-        self.adjust_template();
         $('#content').load("./tabs/adjustments.html", process_html);
     }
 
@@ -38,8 +37,10 @@ TABS.adjustments.initialize = function (callback) {
         // update selected slot
         //
         
-        var adjustmentList = $(newAdjustment).find('.adjustmentSlot .slot');
-        adjustmentList.val(adjustmentRange.slotIndex);
+        if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_42)) {
+            var adjustmentList = $(newAdjustment).find('.adjustmentSlot .slot');
+            adjustmentList.val(adjustmentRange.slotIndex);
+        }
 
         //
         // populate source channel select box
@@ -153,14 +154,23 @@ TABS.adjustments.initialize = function (callback) {
 
     function process_html() {
 
-        var auxChannelCount = RC.active_channels - 4;
+        self.adjust_template();
+
+        var auxChannelCount = FC.RC.active_channels - 4;
 
         var modeTableBodyElement = $('.tab-adjustments .adjustments tbody');
-        for (var adjustmentIndex = 0; adjustmentIndex < ADJUSTMENT_RANGES.length; adjustmentIndex++) {
-            var newAdjustment = addAdjustment(adjustmentIndex, ADJUSTMENT_RANGES[adjustmentIndex], auxChannelCount);
+        for (var adjustmentIndex = 0; adjustmentIndex < FC.ADJUSTMENT_RANGES.length; adjustmentIndex++) {
+            var newAdjustment = addAdjustment(adjustmentIndex, FC.ADJUSTMENT_RANGES[adjustmentIndex], auxChannelCount);
             modeTableBodyElement.append(newAdjustment);
         }
         
+
+        if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42)) {
+            $('.tab-adjustments .adjustmentSlotsHelp').hide();
+            $('.tab-adjustments .adjustmentSlotHeader').hide();
+            $('.tab-adjustments .adjustmentSlot').hide();
+        }
+
         // translate to user-selected language
         i18n.localizePage();
 
@@ -168,9 +178,9 @@ TABS.adjustments.initialize = function (callback) {
         $('a.save').click(function () {
 
             // update internal data structures based on current UI elements
-            var requiredAdjustmentRangeCount = ADJUSTMENT_RANGES.length;
+            var requiredAdjustmentRangeCount = FC.ADJUSTMENT_RANGES.length;
             
-            ADJUSTMENT_RANGES = [];
+            FC.ADJUSTMENT_RANGES = [];
             
             var defaultAdjustmentRange = {
                 slotIndex: 0,
@@ -188,8 +198,13 @@ TABS.adjustments.initialize = function (callback) {
                 
                 if ($(adjustmentElement).find('.enable').prop("checked")) {
                     var rangeValues = $(this).find('.range .channel-slider').val();
+                    var slotIndex = 0;
+                    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_42)) {
+                        slotIndex = parseInt($(this).find('.adjustmentSlot .slot').val());
+                    }
+
                     var adjustmentRange = {
-                        slotIndex: parseInt($(this).find('.adjustmentSlot .slot').val()),
+                        slotIndex: slotIndex,
                         auxChannelIndex: parseInt($(this).find('.channelInfo .channel').val()),
                         range: {
                             start: rangeValues[0],
@@ -198,14 +213,14 @@ TABS.adjustments.initialize = function (callback) {
                         adjustmentFunction: parseInt($(this).find('.functionSelection .function').val()),
                         auxSwitchChannelIndex: parseInt($(this).find('.functionSwitchChannel .channel').val())
                     };
-                    ADJUSTMENT_RANGES.push(adjustmentRange);
+                    FC.ADJUSTMENT_RANGES.push(adjustmentRange);
                 } else {
-                    ADJUSTMENT_RANGES.push(defaultAdjustmentRange);
+                    FC.ADJUSTMENT_RANGES.push(defaultAdjustmentRange);
                 }
             });
             
-            for (var adjustmentRangeIndex = ADJUSTMENT_RANGES.length; adjustmentRangeIndex < requiredAdjustmentRangeCount; adjustmentRangeIndex++) {
-                ADJUSTMENT_RANGES.push(defaultAdjustmentRange);
+            for (var adjustmentRangeIndex = FC.ADJUSTMENT_RANGES.length; adjustmentRangeIndex < requiredAdjustmentRangeCount; adjustmentRangeIndex++) {
+                FC.ADJUSTMENT_RANGES.push(defaultAdjustmentRange);
             }
             
             //
@@ -245,10 +260,10 @@ TABS.adjustments.initialize = function (callback) {
         }
 
         function update_ui() {
-            var auxChannelCount = RC.active_channels - 4;
+            var auxChannelCount = FC.RC.active_channels - 4;
 
             for (var auxChannelIndex = 0; auxChannelIndex < auxChannelCount; auxChannelIndex++) {
-                update_marker(auxChannelIndex, RC.channels[auxChannelIndex + 4]);
+                update_marker(auxChannelIndex, FC.RC.channels[auxChannelIndex + 4]);
             }           
         }
 
@@ -272,14 +287,38 @@ TABS.adjustments.cleanup = function (callback) {
 };
 
 TABS.adjustments.adjust_template = function () {
-    var availableFunctionCount;
-    if (semver.lt(CONFIG.apiVersion, "1.31.0")) {
-        availableFunctionCount = 21; // Available in betaflight 2.9
+
+    var selectFunction = $('#functionSelectionSelect');
+    var elementsNumber;
+
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_41)) {
+        elementsNumber = 31; // OSD Profile Select & LED Profile Select
+    } else if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_40)) {
+        elementsNumber = 29; // PID Audio
+    } else if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_39)) {
+        elementsNumber = 26; // PID Audio
+    } else if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_37)) {
+        elementsNumber = 25; // Horizon Strength
     } else {
-        availableFunctionCount = 24; // RC rate Yaw / D setpoint / D setpoint transition added to 3.1.0
+        elementsNumber = 24; // Setpoint transition
     }
-    var template = $('#tab-adjustments-templates .adjustments .adjustment');
-    var functionList = $(template).find('.functionSelection .function');
-    var functionListOptions = $(functionList).find('option').slice(0,availableFunctionCount);
-    functionList.empty().append(functionListOptions);
+
+    for (let i = 0; i < elementsNumber; i++) {
+        selectFunction.append(new Option(i18n.getMessage('adjustmentsFunction' + i), i));
+    }
+    
+    // For 1.40, the D Setpoint has been replaced, so we replace it with the correct values
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_40)) {
+
+        var element22 = selectFunction.find("option[value='22']");
+        var element23 = selectFunction.find("option[value='23']");
+
+        // Change the "text"
+        element22.text(i18n.getMessage('adjustmentsFunction22_2'));
+        element23.text(i18n.getMessage('adjustmentsFunction23_2'));
+
+        // Reorder, we insert it with the other FF elements to be coherent...
+        element22.insertAfter(selectFunction.find("option[value='25']"));
+        element23.insertAfter(selectFunction.find("option[value='28']"));
+    }
 };

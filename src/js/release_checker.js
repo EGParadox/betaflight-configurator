@@ -1,4 +1,4 @@
- 'use strict;'
+'use strict';
 
 var ReleaseChecker = function (releaseName, releaseUrl) {
     var self = this;
@@ -7,8 +7,6 @@ var ReleaseChecker = function (releaseName, releaseUrl) {
     self._releaseDataTag = `${self._releaseName}ReleaseData`;
     self._releaseLastUpdateTag = `${self._releaseName}ReleaseLastUpdate`
     self._releaseUrl = releaseUrl;
-    
-
 }
 
 ReleaseChecker.prototype.loadReleaseData = function (processFunction) {
